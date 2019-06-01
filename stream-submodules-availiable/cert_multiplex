@@ -1,0 +1,44 @@
+### THIS MUST BE PLACED WITHIN THE STREAM SECTION  OF THE MAIN CONFIG ###
+log_format stream_routing_cert '$remote_addr [$time_local] '
+        'with cert status "$ssl_client_verify"'
+        'proxying to "$name_cert" '
+        '$protocol $status $bytes_sent $bytes_received '
+        '$session_time';
+
+map $ssl_client_verify $name_cert {
+    default original_dest_cert;
+    "SUCCESS" openvpn_cert;
+}
+
+upstream original_dest_cert {
+    #server unix:/var/www/tlstunnel/nginx_socket_cert;
+    server 127.0.0.1:8001;
+}
+upstream openvpn_cert {
+    server unix:/var/www/tlstunnel/openvpn_socket_cert;
+}
+
+# ssl auslesen weil sonst sehen wir client cert nicht
+server{
+    listen 93.104.211.59:443 ssl;
+    listen [2a02:c205:2013:1664::1]:443 ipv6only=on ssl;
+
+    access_log /var/log/nginx/tls_cert.log stream_routing_cert;
+
+    # verify client
+    ssl_verify_client       optional;
+    proxy_protocol on;
+    proxy_pass $name_cert;
+}
+
+# openvpn forward
+server{
+    listen unix:/var/www/tlstunnel/openvpn_socket_cert proxy_protocol;
+    proxy_pass 127.0.0.1:7012;
+}
+
+# nginx forward
+#server{
+#    listen unix:/var/www/tlstunnel/nginx_socket_cert proxy_protocol;
+#    proxy_pass 127.0.0.1:8001;
+#}

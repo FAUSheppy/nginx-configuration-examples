@@ -1,0 +1,32 @@
+# finger weg, wichtig!
+log_format ths-log '$remote_addr [$time_local] '
+        'with cert status "$ssl_client_verify" '
+        'client "$ssl_client_s_dn" '
+        'proxying to "$ths_auth" '
+        '$protocol $status $bytes_sent $bytes_received '
+        '$session_time';
+
+map $ssl_client_s_dn $ths_auth {
+    default ths_deny;
+    ~CN=ths-app ths_accept;
+}
+
+upstream ths_deny {
+    server ths.atlantishq.de:7100 ssl;
+}
+upstream ths_accept {
+    server 127.0.0.1:7100;
+}
+
+# ssl auslesen weil sonst sehen wir client cert nicht
+server{
+    listen 93.104.211.59:7101 ssl;
+    listen [2a02:c205:2013:1664::1]:7101 ipv6only=on ssl;
+
+    access_log /var/log/nginx/ths_routing.log ths-log;
+
+    # verify client
+    ssl_verify_client on;
+    proxy_protocol off;
+    proxy_pass $ths_auth;
+}

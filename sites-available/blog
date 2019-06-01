@@ -1,0 +1,41 @@
+server {
+    # this is nessesary because hugo has a bug which causes it to append the internal port to
+    # the request uri and because the proxy_redirect cannot be used withing the upstream
+    # directive of nginx
+    server_name blog.atlantishq.de athq.de blog.athq.de yannikschmidt.com *.yannikschmidt.com;
+    listen 127.0.0.1:8001 proxy_protocol http2 ssl;
+    listen 127.0.0.1:8004;
+    #listen 443 ssl http2;
+    #auth_basic "Blog";
+    #auth_basic_user_file /etc/nginx/auth/blog_auth;
+    error_log /var/log/nginx/blogerror.log;
+    
+    # disable logging
+    access_log  off;
+    
+    location / {
+        proxy_pass http://127.0.0.1:8003;
+        proxy_set_header Host blog.atlantishq.de;
+        proxy_redirect http://blog.atlantishq.de:8003/ https://blog.atlantishq.de/;
+
+    }
+}
+server {
+    server_name blog.atlantishq.de;
+    listen 127.0.0.1:8003;
+    root /var/www/deployed;
+
+    # disable logging
+    access_log  off;
+
+    error_page 404 /404.html;
+    location = /404.html {
+        internal;
+    }
+
+    include /etc/nginx/security-policy.conf;
+    include /etc/nginx/mime.types;
+    include /etc/nginx/caching.policy;
+    include locations/acme-challange;
+    include /etc/nginx/gzip.conf;
+}

@@ -1,0 +1,42 @@
+### THIS MUST BE PLACED WITHIN THE STREAM SECTION  OF THE MAIN CONFIG ###
+    log_format stream_routing '$remote_addr [$time_local] '
+            'with SNI name "$ssl_preread_server_name" '
+            'proxying to "$name" '
+            '$protocol $status $bytes_sent $bytes_received '
+            '$session_time';
+    map $ssl_preread_server_name $name {
+        default original_dest;
+        vpn.atlantishq.de openvpn;
+    }
+    
+    upstream original_dest {
+        #server unix:/var/www/tlstunnel/nginx_socket;
+        server 127.0.0.1:8001;
+    }
+    upstream openvpn {
+        server unix:/var/www/tlstunnel/openvpn_socket;
+    }
+    
+    # kein SSL! (weil sonst kein SLI auslesen)
+    server{
+        listen 93.104.211.59:443;
+        listen [2a02:c205:2013:1664::1]:443 ipv6only=on;
+
+        #access_log /var/log/nginx/tls.log stream_routing;
+    
+        proxy_protocol on;
+        ssl_preread on;
+        proxy_pass $name;
+    }
+    
+    # openvpn forward
+    server{
+        listen unix:/var/www/tlstunnel/openvpn_socket ssl proxy_protocol;
+        proxy_pass 127.0.0.1:7012;
+    }
+
+    # nginx forward
+    #server{
+    #    listen unix:/var/www/tlstunnel/nginx_socket ssl proxy_protocol;
+    #    proxy_pass 127.0.0.1:8001;
+    #}

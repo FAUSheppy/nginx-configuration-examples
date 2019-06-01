@@ -1,0 +1,111 @@
+### THIS MUST BE PLACED WITHIN THE STREAM SECTION  OF THE MAIN CONFIG ###
+
+### LOG FORMATS ###
+## CERT ##
+log_format stream_routing_cert '$remote_addr [$time_local] '
+        'with cert status "$ssl_client_verify" '
+        'proxying to "$name_cert" '
+        '$protocol $status $bytes_sent $bytes_received '
+        '$session_time';
+
+## ALPN ##
+log_format protocol_routing_cert '$remote_addr [$time_local] '
+        'with prot status "$ssl_preread_alpn_protocols" '
+        'proxying to "$protocol_stream" '
+        '$protocol $status $bytes_sent $bytes_received '
+        '$session_time';
+
+## SNI ##
+log_format stream_routing_sni '$remote_addr [$time_local] '
+        'with SNI "$ssl_preread_server_name" '
+        'proxying to "$sni" '
+        '$protocol $status $bytes_sent $bytes_received '
+        '$session_time';
+
+### MAPS ###
+## CERT ##
+map $ssl_client_verify $name_cert {
+    default original_dest_cert;
+    "SUCCESS" openvpn_cert;
+}
+
+## ALPN ##
+map $ssl_preread_alpn_protocols $protocol_stream {
+    default       127.0.0.1:7999;
+    ~\bhttp/1.1\b 127.0.0.1:8001;
+    ~\bh2\b       127.0.0.1:8001;
+}
+
+## SNI ##
+map $ssl_preread_server_name $sni {
+    default 127.0.0.1:7998;
+    vpn.atlantishq.de openvpn_sni;
+}
+
+### UPSTREAMS ###
+upstream original_dest_cert {
+    server unix:/var/www/tlstunnel/nginx_socket_cert;
+}
+upstream openvpn_cert {
+    server unix:/var/www/tlstunnel/openvpn_socket_cert;
+}
+upstream openvpn_sni {
+    server unix:/var/www/tlstunnel/openvpn_socket_sni;
+}
+
+############## SERVERS ##################
+### MAIN / ALPN-Multiplex ###
+server{
+    listen 93.104.211.59:443;
+    listen [2a02:c205:2013:1664::1]:443 ipv6only=on;
+
+    ssl_preread on;
+    access_log /var/log/nginx/protocol_routing_cert protocol_routing_cert;
+    
+    proxy_protocol on;
+    proxy_pass $protocol_stream;
+}
+
+### SNI-Multiplex ###
+server{
+    listen 127.0.0.1:7999 proxy_protocol;
+
+    access_log /var/log/nginx/sni.log stream_routing_sni;
+    
+    proxy_protocol on;
+    ssl_preread on;
+    proxy_pass $sni;
+}
+
+### CERT-Multiplex ###
+server{
+    listen 127.0.0.1:7998 ssl proxy_protocol;
+
+    access_log /var/log/nginx/tls_cert.log stream_routing_cert;
+
+    ssl_verify_client       optional;
+    proxy_protocol on;
+    proxy_pass $name_cert;
+}
+
+####################################################################
+
+### FORWARD SERVERS ###
+## OPENVPN - nossl forward ##
+server{
+    listen unix:/var/www/tlstunnel/openvpn_socket_cert proxy_protocol;
+    proxy_pass 127.0.0.1:7012;
+}
+
+## NGINX - nossl forward ##
+server{
+    listen unix:/var/www/tlstunnel/nginx_socket_cert proxy_protocol;
+    proxy_pass 127.0.0.1:8004;
+}
+
+    
+## OPENVPN - with ssl forward ##
+server{
+    listen unix:/var/www/tlstunnel/openvpn_socket_sni ssl proxy_protocol;
+    proxy_pass 127.0.0.1:7012;
+}
